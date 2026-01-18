@@ -1,26 +1,30 @@
 import client from "#config/redis.js";
+import rateLimitStrategy from "./rateLimitStrategy.js";
 const LIMIT = 25;
 const WINDOW_SIZE = 60;
 
-export default async function isRequestAllowed(identifier: string): Promise<boolean> {
-    const nowInSeconds = Math.floor(Date.now() / 1000);
-    const key = `sw:${identifier}`;
+export default class SlidingWindow implements rateLimitStrategy {
 
-    try {
-        await client.zRemRangeByScore(key, 0, nowInSeconds - WINDOW_SIZE);
-        await client.zAdd(key, { score: nowInSeconds, value: `${nowInSeconds}-${crypto.randomUUID()}` });
-        await client.expire(key, WINDOW_SIZE);
+    async isRequestAllowed(identifier: string): Promise<boolean> {
+        const nowInSeconds = Math.floor(Date.now() / 1000);
+        const key = `sw:${identifier}`;
 
-        const count = await client.zCard(key);
+        try {
+            await client.zRemRangeByScore(key, 0, nowInSeconds - WINDOW_SIZE);
+            await client.zAdd(key, { score: nowInSeconds, value: `${nowInSeconds}-${crypto.randomUUID()}` });
+            await client.expire(key, WINDOW_SIZE);
 
-        if (count > LIMIT) {
-            return false;
+            const count = await client.zCard(key);
+
+            if (count > LIMIT) {
+                return false;
+            }
         }
-    }
-    catch (err) {
-        console.log(err);
+        catch (err) {
+            console.log(err);
+            return true;
+        }
+
         return true;
     }
-
-    return true;
 }

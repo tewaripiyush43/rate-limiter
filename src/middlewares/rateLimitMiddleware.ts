@@ -1,13 +1,14 @@
-import isRequestAllowed from "#rate-limiter/strategies/fixedWindow.js";
+import rateLimiter from "#rate-limiter/index.js";
 import { Request, Response, NextFunction } from "express";
 
-export default async function rateLimiter(
+export default async function rateLimitMiddleware(
     req: Request,
     res: Response,
     next: NextFunction
 ) {
     const identifier = String(req.ip);
-    if (await isRequestAllowed(identifier) === true) {
+    const strategy = rateLimiter(process.env.RATE_LIMIT_STRATEGY);
+    if (await strategy.isRequestAllowed(identifier) === true) {
         next();
     } else {
         res.status(429).send({

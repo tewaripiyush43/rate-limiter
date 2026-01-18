@@ -1,10 +1,10 @@
-import rateLimiter from "#middlewares/rateLimit.js";
+import rateLimitMiddleware from "#middlewares/rateLimitMiddleware.js";
 import express from "express";
 
 const app = express();
 app.use(express.json());
 
-app.use(rateLimiter);
+app.use(rateLimitMiddleware);
 
 app.get("/health", (req, res) => {
   res.send({ status: "ok" })
