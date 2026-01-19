@@ -1,19 +1,36 @@
-import rateLimiter from "#rate-limiter/index.js";
+import { selectRateLimitStrategy } from "#rate-limiter/index.js";
 import { Request, Response, NextFunction } from "express";
+import { RateLimiterOptions } from "#types/RateLimiterOptions.js";
 
-export default async function rateLimitMiddleware(
-    req: Request,
-    res: Response,
-    next: NextFunction
+export default function rateLimitMiddleware(
+    options: RateLimiterOptions
 ) {
-    const identifier = String(req.ip);
-    const strategy = rateLimiter(process.env.RATE_LIMIT_STRATEGY);
-    if (await strategy.isRequestAllowed(identifier) === true) {
+    const {
+        limit,
+        windowInSeconds,
+        strategy
+    } = options;
+
+    const rateLimiter = selectRateLimitStrategy(strategy);
+
+    return async function (
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ) {
+
+        const identifier = options.identifier?.(req) ?? req.ip ?? "UNKNOWN";
+        const allowed = await rateLimiter.isRequestAllowed(identifier, limit, windowInSeconds);
+
+        if (!allowed) {
+            res.status(429)
+                .set("Retry-After", String(windowInSeconds))
+                .json({
+                    error: "RATE_LIMITED",
+                    message: "Too many requests"
+                });
+            return;
+        }
         next();
-    } else {
-        res.status(429).send({
-            status: 429,
-            message: "Too many Requests"
-        })
     }
 }

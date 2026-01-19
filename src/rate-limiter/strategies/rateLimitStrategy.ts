@@ -1,3 +1,7 @@
-export default interface rateLimitStrategy {
-    isRequestAllowed(identifier: string): Promise<boolean>;
+export default interface RateLimitStrategy {
+    isRequestAllowed(
+        identifier: string,
+        limit: number,
+        windowInSeconds: number
+    ): Promise<boolean>;
 }
