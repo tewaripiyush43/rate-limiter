@@ -1,3 +1,4 @@
+import proxyHandler from "#gateway/proxyHandler.js";
 import rateLimitMiddleware from "#middlewares/rateLimitMiddleware.js";
 import express from "express";
 
@@ -12,6 +13,8 @@ app.use(
     identifier: () => "GLOBAL"
   })
 );
+
+app.use("/proxy", proxyHandler);
 
 app.get(
   "/health",
