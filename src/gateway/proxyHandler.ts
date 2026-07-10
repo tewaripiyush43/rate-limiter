@@ -2,6 +2,7 @@ import { ENV } from "../config/env.js";
 import { NextFunction, Request, Response } from "express";
 import { getDownstreamUrl } from "./downstreamUrlResolver.js";
 import { GatewayTimeoutError } from "../errors/GatewayTimeoutError.js";
+import { logger } from "../utils/logger.js";
 
 export default async function proxyHandler(req: Request, res: Response, next: NextFunction) {
     const abortController = new AbortController();
@@ -36,17 +37,73 @@ export default async function proxyHandler(req: Request, res: Response, next: Ne
             duplex: "half"
         }
 
-        const response = await fetch(targetUrl, options);
+        const maxRetries = (req.method === 'GET' || req.method === 'HEAD') ? 3 : 0;
+        const initialDelayMs = 100;
+        const backoffFactor = 2;
+        const jitterFactor = 0.2;
+
+        let attempt = 0;
+        let response: globalThis.Response | null = null;
+        let lastError: any = null;
+
+        while (attempt <= maxRetries) {
+            if (attempt > 0) {
+                const backoffDelay = initialDelayMs * Math.pow(backoffFactor, attempt - 1);
+                const jitterMultiplier = 1 + (Math.random() * 2 - 1) * jitterFactor;
+                const finalDelay = backoffDelay * jitterMultiplier;
+
+                logger.warn(`Retrying downstream proxy request. Attempt ${attempt}/${maxRetries} after ${finalDelay.toFixed(0)}ms.`, {
+                    requestId: req.requestId,
+                    tenantKey: req.client?.key,
+                    tenantName: req.client?.name,
+                    plan: req.client?.plan,
+                    attempt,
+                    delayMs: parseFloat(finalDelay.toFixed(2)),
+                    url: targetUrl
+                });
+
+                await new Promise<void>((resolve, reject) => {
+                    const timeout = setTimeout(resolve, finalDelay);
+                    abortController.signal.addEventListener("abort", () => {
+                        clearTimeout(timeout);
+                        reject(new DOMException("Aborted", "AbortError"));
+                    });
+                });
+            }
+
+            try {
+                response = await fetch(targetUrl, options);
+                
+                if (response.status < 500) {
+                    break;
+                }
+                
+                lastError = new Error(`Downstream service returned status ${response.status}`);
+            } catch (err: any) {
+                if (err.name === "AbortError" || abortController.signal.aborted) {
+                    throw err;
+                }
+                lastError = err;
+            }
+
+            attempt++;
+        }
+
+        if (!response) {
+            throw lastError || new Error("Failed to contact downstream service.");
+        }
+
+        const validResponse: globalThis.Response = response;
 
         // Pipe downstream response to client
-        res.status(response.status);
-        response.headers.forEach((value, key) => {
+        res.status(validResponse.status);
+        validResponse.headers.forEach((value, key) => {
             res.setHeader(key, value);
         });
 
-        if (response.body) {
+        if (validResponse.body) {
             // Wait for stream to finish piping
-            for await (const chunk of response.body as any) {
+            for await (const chunk of validResponse.body as any) {
                 res.write(chunk);
             }
             res.end();

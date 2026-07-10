@@ -3,6 +3,7 @@ type ServiceConfig = {
 }
 
 export type TenantConfig = {
+    key: string,
     plan: string,
     name: string,
     baseUrl: string,
@@ -11,6 +12,7 @@ export type TenantConfig = {
 
 export const config: Record<string, TenantConfig> = {
     "api-key-1": {
+        key: "api-key-1",
         plan: "free",
         name: "abc",
         baseUrl: "http://localhost:9000",

@@ -2,21 +2,22 @@ import "dotenv/config";
 import app from "./app.js";
 import client from "./config/redis.js";
 import { ENV } from "./config/env.js";
+import { logger } from "./utils/logger.js";
 
 const PORT = ENV.PORT || 9001;
 let shuttingDown = false;
 
 client.connect().catch((err: any) => {
-    console.error("Redis connection error during startup:", err?.message || err);
+    logger.error("Redis connection error during startup", err);
 });
 
 client.on("ready", () => {
-    console.log("Redis server is connected and ready");
+    logger.info("Redis server is connected and ready");
 });
 
 const server = app.listen(PORT, () => {
-    console.log(`Server is running on ${PORT}`)
-})
+    logger.info(`Server is running on ${PORT}`, { port: PORT });
+});
 
 process.on("SIGTERM", shutdownHandler);
 process.on("SIGINT", shutdownHandler);
@@ -25,15 +26,15 @@ function shutdownHandler() {
     if (shuttingDown) return;
     shuttingDown = true;
 
-    console.log("SIGTERM received, shutting down gracefully...");
+    logger.info("Termination signal received, shutting down gracefully...");
 
     setTimeout(() => {
-        console.error("Forcefully shutting down");
+        logger.error("Forcefully shutting down because graceful shutdown timed out");
         process.exit(1);
     }, 10000);
 
     server.close(async () => {
-        console.log("HTTP server is closed")
+        logger.info("HTTP server is closed");
 
         try {
             await Promise.race([
@@ -43,10 +44,10 @@ function shutdownHandler() {
                     resolve(null);
                 }, 500))
             ]);
-            console.log("Redis connection closed");
+            logger.info("Redis connection closed");
         } catch (err) {
-            console.error(err);
+            logger.error("Error during Redis client shutdown", err);
         }
         process.exit(0);
-    })
+    });
 }
